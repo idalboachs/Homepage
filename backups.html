@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Mi Startpage - Marcadores</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{--bg:#000;--card:#fff;--card-text:#000}
+    html,body{height:100%;margin:0}
+    body{
+      background:var(--bg);
+      color:#fff;
+      font-family:Arial,Helvetica,sans-serif;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      padding:10px;
+      box-sizing:border-box;
+    }
+    form#searchForm{width:100%;max-width:900px;display:flex;gap:8px;margin-bottom:8px;align-items:center;justify-content:center;}
+    #searchInput{width:90%;max-width:800px;padding:10px 14px;border-radius:25px;border:1px solid #ddd;background:#fff;color:#000;font-size:16px;outline:none;box-sizing:border-box;}
+    #searchBtn{display:none}
+    #addBtn{margin:6px 0 12px;padding:8px 12px;border-radius:8px;background:#ffffff;color:#000;border:none;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.2);}
+    .grid{width:100%;max-width:1100px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:8px;box-sizing:border-box;}
+    .card{background:var(--card);color:var(--card-text);border-radius:8px;padding:8px;text-align:center;border:1px solid #eee;aspect-ratio:1/1;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;box-sizing:border-box;cursor:pointer;user-select:none;}
+    .card img{width:32px;height:32px;border-radius:50%;object-fit:cover;margin-bottom:6px;}
+    .card span{font-size:12px;color:var(--card-text);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90%;}
+    .card:hover{background:#f0f0f0;box-shadow:0 2px 8px rgba(0,0,0,0.1);}
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);align-items:center;justify-content:center;z-index:2000;}
+    .modal .panel{background:#222;color:#fff;padding:16px;border-radius:10px;width:92%;max-width:420px;box-sizing:border-box;}
+    .panel h3{margin:0 0 8px}
+    .panel input[type="text"], .panel input[type="url"]{width:100%;padding:8px;margin:6px 0;border-radius:6px;border:none;background:#333;color:white;box-sizing:border-box;}
+    .panel .row{display:flex;gap:8px}
+    .panel button{margin-top:8px;padding:8px 10px;border-radius:6px;border:none;cursor:pointer}
+    .btn-cancel{background:#555;color:#fff}
+    .btn-save{background:#0a84ff;color:#fff}
+    .options-menu{display:none;position:fixed;background:#222;color:#fff;border-radius:8px;padding:8px;z-index:3000;min-width:180px;box-shadow:0 6px 18px rgba(0,0,0,0.4);}
+    .options-menu button{display:block;width:100%;border:none;background:transparent;color:white;padding:8px;text-align:left;border-radius:6px;cursor:pointer}
+    .options-menu button:hover{background:#333}
+    @media(max-width:600px){.grid{grid-template-columns:repeat(4,1fr)}#searchInput{max-width:none;width:80%}}
+  </style>
+</head>
+<body>
+  <form id="searchForm">
+    <input id="searchInput" type="text" placeholder="Buscar en Google...">
+    <button id="searchBtn" type="submit">Buscar</button>
+  </form>
+  <button id="addBtn">＋ Agregar marcador</button>
+  <div class="grid" id="grid"></div>
+
+  <!-- Modal -->
+  <div class="modal" id="modal">
+    <div class="panel">
+      <h3 id="modalTitle">Agregar marcador</h3>
+      <input id="nameField" type="text" placeholder="Nombre">
+      <input id="urlField" type="url" placeholder="https://ejemplo.com">
+      <input id="iconUrlField" type="url" placeholder="(Opcional) URL del icono">
+      <input id="iconFileField" type="file" accept="image/*">
+      <div style="text-align:right">
+        <button class="btn-cancel" id="cancelBtn">Cancelar</button>
+        <button class="btn-save" id="saveBtn">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Opciones -->
+  <div class="options-menu" id="optionsMenu">
+    <button id="optOpen">🔗 Abrir en pestaña nueva</button>
+    <button id="optEdit">✏️ Editar</button>
+    <button id="optDelete">🗑️ Eliminar</button>
+    <button id="optIconUrl">🌐 Cambiar icono por URL</button>
+    <button id="optIconFile">📁 Cambiar icono (subir archivo)</button>
+    <button id="optClose">Cancelar</button>
+  </div>
+
+<script>
+const DEFAULT_SITES = [
+  { name:'Google',url:'https://google.com',icon:'https://www.google.com/favicon.ico'},
+  { name:'YouTube',url:'https://youtube.com',icon:'https://www.youtube.com/favicon.ico'},
+  { name:'Wikipedia',url:'https://wikipedia.org',icon:'https://www.wikipedia.org/favicon.ico'},
+  { name:'Reddit',url:'https://reddit.com',icon:'https://www.reddit.com/favicon.ico'}
+];
+let sites=[]; const STORAGE_KEY='my_startpage_sites_v1';
+let selectedIndex=null, editingIndex=null, holdTimer=null;
+const grid=document.getElementById('grid');
+const optionsMenu=document.getElementById('optionsMenu');
+const modal=document.getElementById('modal');
+const nameField=document.getElementById('nameField');
+const urlField=document.getElementById('urlField');
+const iconUrlField=document.getElementById('iconUrlField');
+const iconFileField=document.getElementById('iconFileField');
+
+function loadSites(){const raw=localStorage.getItem(STORAGE_KEY);if(raw){sites=JSON.parse(raw);}else{sites=DEFAULT_SITES.slice();saveSites();}}
+function saveSites(){localStorage.setItem(STORAGE_KEY,JSON.stringify(sites));}
+function render(){
+  grid.innerHTML='';
+  sites.forEach((s,i)=>{
+    const d=document.createElement('div');
+    d.className='card';
+    const img=document.createElement('img'); img.src=s.icon; img.alt=s.name;
+    const span=document.createElement('span'); span.textContent=s.name;
+    d.appendChild(img); d.appendChild(span);
+    // click = abrir
+    d.addEventListener('click',()=>{window.open(s.url,'_blank')});
+    // long press = opciones
+    d.addEventListener('touchstart',e=>{
+      holdTimer=setTimeout(()=>{selectedIndex=i;openOptionsMenuAt(e.touches[0].clientX,e.touches[0].clientY);},600);
+    });
+    d.addEventListener('touchend',()=>clearTimeout(holdTimer));
+    d.addEventListener('contextmenu',e=>{
+      e.preventDefault(); selectedIndex=i; openOptionsMenuAt(e.clientX,e.clientY);
+    });
+    grid.appendChild(d);
+  });
+}
+function openOptionsMenuAt(x,y){
+  optionsMenu.style.display='block';
+  const rect=optionsMenu.getBoundingClientRect();
+  let left=x, top=y; const pad=8;
+  if(left+rect.width+pad>window.innerWidth){left=window.innerWidth-rect.width-pad;}
+  if(top+rect.height+pad>window.innerHeight){top=window.innerHeight-rect.height-pad;}
+  optionsMenu.style.left=left+'px'; optionsMenu.style.top=top+'px';
+}
+function closeOptionsMenu(){optionsMenu.style.display='none';selectedIndex=null;}
+document.getElementById('optOpen').onclick=()=>{if(selectedIndex!=null)window.open(sites[selectedIndex].url,'_blank');closeOptionsMenu();}
+document.getElementById('optEdit').onclick=()=>{if(selectedIndex!=null)openModalForEdit(selectedIndex);closeOptionsMenu();}
+document.getElementById('optDelete').onclick=()=>{if(selectedIndex!=null&&confirm('¿Eliminar?')){sites.splice(selectedIndex,1);saveSites();render();}closeOptionsMenu();}
+document.getElementById('optIconUrl').onclick=()=>{if(selectedIndex!=null){const u=prompt('URL del icono:');if(u){sites[selectedIndex].icon=u;saveSites();render();}}closeOptionsMenu();}
+document.getElementById('optIconFile').onclick=()=>{if(selectedIndex!=null){const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{sites[selectedIndex].icon=ev.target.result;saveSites();render();};r.readAsDataURL(f);};inp.click();}closeOptionsMenu();}
+document.getElementById('optClose').onclick=closeOptionsMenu;
+document.addEventListener('click',e=>{if(optionsMenu.style.display==='block'&&!optionsMenu.contains(e.target))closeOptionsMenu();});
+
+function openModalForAdd(){editingIndex=null;nameField.value='';urlField.value='';iconUrlField.value='';iconFileField.value='';modal.style.display='flex';}
+function openModalForEdit(idx){editingIndex=idx;const s=sites[idx];nameField.value=s.name;urlField.value=s.url;iconUrlField.value=s.icon.startsWith('data:')?'':s.icon;iconFileField.value='';modal.style.display='flex';}
+function closeModal(){modal.style.display='none';editingIndex=null;}
+document.getElementById('cancelBtn').onclick=e=>{e.preventDefault();closeModal();}
+document.getElementById('saveBtn').onclick=e=>{
+  e.preventDefault();
+  const n=nameField.value.trim(), u=urlField.value.trim(), iu=iconUrlField.value.trim(); const f=iconFileField.files[0];
+  if(!n||!u){alert('Nombre y URL son obligatorios');return;}
+  if(f){const r=new FileReader();r.onload=ev=>{addOrUpdate(n,u,ev.target.result);};r.readAsDataURL(f);}
+  else{addOrUpdate(n,u,iu||('https://www.google.com/s2/favicons?domain='+new URL(u).hostname));}
+};
+function addOrUpdate(n,u,i){if(editingIndex==null)sites.push({name:n,url:u,icon:i});else sites[editingIndex]={name:n,url:u,icon:i};saveSites();render();closeModal();}
+document.getElementById('addBtn').onclick=openModalForAdd;
+document.getElementById('searchForm').onsubmit=e=>{e.preventDefault();const q=document.getElementById('searchInput').value.trim();if(q)location.href='https://www.google.com/search?q='+encodeURIComponent(q);}
+loadSites();render();
+</script>
+</body>
+</html>
